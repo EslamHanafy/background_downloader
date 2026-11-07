@@ -29,6 +29,9 @@ abstract base class NativeDownloader extends BaseDownloader {
 
   late final SerialJobQueue<MethodCall, dynamic> _jobQueue;
 
+  /// Completes once the background channel handler is set
+  final _backgroundChannelReady = Completer<void>();
+
   /// Initializes the background channel and starts listening for messages from
   /// the native side
   @override
@@ -41,6 +44,26 @@ abstract base class NativeDownloader extends BaseDownloader {
     // the processing itself is asynchronous (using [compute])
     _jobQueue = SerialJobQueue(_handleBackgroundMessage);
     _backgroundChannel.setMethodCallHandler(_jobQueue.add);
+    _backgroundChannelReady.complete();
+  }
+
+  /// Stops delivery of background updates to this engine and stops the
+  /// [JsonProcessor] isolate
+  ///
+  /// Waits until the background channel handler is set, removes it,
+  /// waits until the updates already received have been processed, then
+  /// disposes the [JsonProcessor].
+  ///
+  /// Android stores final status updates that cannot be delivered and replays
+  /// them to the next engine that calls `start()` or `resumeFromBackground()`.
+  /// iOS does not store updates posted while no handler is set.
+  @override
+  Future<void> dispose() async {
+    await _backgroundChannelReady.future;
+    _backgroundChannel.setMethodCallHandler(null);
+    await _jobQueue.idle;
+    await JsonProcessor().dispose();
+    await super.dispose();
   }
 
   /// Handles the background message

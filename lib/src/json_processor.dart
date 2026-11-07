@@ -47,13 +47,27 @@ class JsonProcessor {
 
   Isolate? _isolate;
   SendPort? _sendPort;
+  ReceivePort? _responsePort;
   final Map<int, Completer<dynamic>> _pendingCompleters = {};
   Timer? _shutdownTimer;
   int _nextId = 0;
   bool _isStarting = false;
   Completer<void> _startCompleter = Completer<void>();
+  Future<void>? _disposeFuture;
 
   /// Public API
+
+  /// Stops the background isolate now, instead of after the idle timeout
+  ///
+  /// Cancels the idle timer and completes every pending request with a
+  /// [StateError]. Use it before the Flutter engine that owns this isolate is
+  /// destroyed (e.g. a headless background engine): the idle timer cannot fire
+  /// there, so the isolate would otherwise outlive the engine.
+  ///
+  /// A later request starts a fresh isolate. Calling [dispose] again while it
+  /// runs returns the same future; calling it when no isolate runs does nothing.
+  Future<void> dispose() =>
+      _disposeFuture ??= _dispose().whenComplete(() => _disposeFuture = null);
 
   Future<Task> decodeTask(String jsonString) async =>
       await _process<Task>((id) => _TaskFromJson(id, jsonString));
@@ -87,6 +101,9 @@ class JsonProcessor {
 
   Future<T> _process<T>(JsonCommand Function(int id) commandBuilder) async {
     await _ensureStarted();
+    if (_sendPort == null) {
+      throw StateError('JsonProcessor was disposed');
+    }
     _resetShutdownTimer();
 
     final id = _nextId++;
@@ -125,10 +142,10 @@ class JsonProcessor {
       _sendPort = await receivePort.first as SendPort;
 
       // Create a new receive port for responses
-      final responsePort = ReceivePort();
-      _sendPort!.send(responsePort.sendPort);
+      _responsePort = ReceivePort();
+      _sendPort!.send(_responsePort!.sendPort);
 
-      responsePort.listen(_handleResponse);
+      _responsePort!.listen(_handleResponse);
 
       if (!_startCompleter.isCompleted) {
         _startCompleter.complete();
@@ -137,6 +154,8 @@ class JsonProcessor {
       _isolate?.kill();
       _isolate = null;
       _sendPort = null;
+      _responsePort?.close();
+      _responsePort = null;
       _isStarting = false;
       if (!_startCompleter.isCompleted) {
         _startCompleter.completeError(e);
@@ -145,6 +164,22 @@ class JsonProcessor {
     } finally {
       _isStarting = false;
     }
+  }
+
+  Future<void> _dispose() async {
+    if (_isStarting) {
+      try {
+        await _startCompleter.future;
+      } catch (_) {
+        // a failed start has already reset the isolate
+      }
+    }
+    final pending = _pendingCompleters.values.toList();
+    _pendingCompleters.clear();
+    for (final completer in pending) {
+      completer.completeError(StateError('JsonProcessor was disposed'));
+    }
+    _stopIsolate();
   }
 
   void _handleResponse(dynamic message) {
@@ -162,6 +197,8 @@ class JsonProcessor {
 
   void _resetShutdownTimer() {
     _shutdownTimer?.cancel();
+    _shutdownTimer = null;
+    if (_isolate == null) return;
     _shutdownTimer = Timer(const Duration(minutes: 1), _shutdown);
   }
 
@@ -171,9 +208,15 @@ class JsonProcessor {
       _resetShutdownTimer();
       return;
     }
+    _stopIsolate();
+  }
+
+  void _stopIsolate() {
     _isolate?.kill();
     _isolate = null;
     _sendPort = null;
+    _responsePort?.close();
+    _responsePort = null;
     _shutdownTimer?.cancel();
     _shutdownTimer = null;
   }
