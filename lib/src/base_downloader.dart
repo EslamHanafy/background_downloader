@@ -1303,4 +1303,11 @@ abstract base class BaseDownloader {
     );
     resetUpdatesStreamController();
   }
+
+  /// Releases resources that would otherwise outlive the Flutter engine
+  ///
+  /// Called by [FileDownloader.dispose]. Subclasses that hold such resources
+  /// override this and call `super.dispose()`.
+  @mustCallSuper
+  Future<void> dispose() async {}
 }

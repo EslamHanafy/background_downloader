@@ -1451,6 +1451,23 @@ interface class FileDownloader {
   /// such that the stream can be listened to again
   Future<void> resetUpdates() => _downloader.resetUpdatesStreamController();
 
+  /// Stops the background JSON isolate of this downloader before its Flutter
+  /// engine is destroyed
+  ///
+  /// Use this in an engine that is about to be destroyed, e.g. a headless
+  /// background engine: the background JSON isolate would otherwise outlive
+  /// the engine and keep its isolate group alive.
+  ///
+  /// After [dispose] this engine no longer receives task updates. On Android,
+  /// final status updates are stored natively and delivered to the next engine
+  /// that calls [start] or [resumeFromBackground]. On iOS, updates posted after
+  /// [dispose] are not stored.
+  ///
+  /// Does not stop the isolate of the default [LocalStorePersistentStorage]: to
+  /// avoid that isolate, pass a [PersistentStorage] that does not use one on
+  /// the first call to [FileDownloader]. Do not enqueue tasks after [dispose].
+  Future<void> dispose() => _downloader.dispose();
+
   /// Destroy the [FileDownloader]. Subsequent use requires initialization
   void destroy() {
     transfers.clear();

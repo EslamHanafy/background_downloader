@@ -8,6 +8,17 @@ import 'dart:collection';
 class SerialJobQueue<J, R>(final Future<R> Function(J) _processor) {
   final Queue<_Job<J, R>> _queue = Queue();
   bool _isProcessing = false;
+  Completer<void>? _idleCompleter;
+
+  /// Completes when the queue is empty and no job is being processed.
+  ///
+  /// Completes at once when already idle.
+  Future<void> get idle {
+    if (!_isProcessing && _queue.isEmpty) {
+      return Future.value();
+    }
+    return (_idleCompleter ??= Completer<void>()).future;
+  }
 
   /// Adds data to the queue and returns a Future that completes
   /// when this specific item has been processed.
@@ -39,6 +50,9 @@ class SerialJobQueue<J, R>(final Future<R> Function(J) _processor) {
     }
 
     _isProcessing = false;
+    final idleCompleter = _idleCompleter;
+    _idleCompleter = null;
+    idleCompleter?.complete();
   }
 }
 

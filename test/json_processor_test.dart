@@ -81,6 +81,60 @@ void main() {
     );
   });
 
+  group('dispose', () {
+    final jsonString = jsonEncode(
+      DownloadTask(url: 'https://example.com', filename: 'test.txt').toJson(),
+    );
+    final throwsDisposed = throwsA(
+      isA<StateError>().having(
+        (e) => e.message,
+        'message',
+        contains('disposed'),
+      ),
+    );
+
+    test('dispose with no isolate started completes', () async {
+      await JsonProcessor().dispose(); // stops an isolate earlier tests started
+      await expectLater(JsonProcessor().dispose(), completes);
+    });
+
+    test('a decode after dispose works again (fresh isolate)', () async {
+      await JsonProcessor().decodeTask(jsonString);
+      await JsonProcessor().dispose();
+
+      final task = await JsonProcessor().decodeTask(jsonString);
+      expect(task.url, equals('https://example.com'));
+    });
+
+    test('a request in flight when dispose runs completes with an error and dispose completes', () async {
+      await JsonProcessor().decodeTask(jsonString);
+      final inFlight = JsonProcessor().decodeTask(jsonString);
+      final expectation = expectLater(inFlight, throwsDisposed);
+      // let the request reach the isolate; the reply is an event, so it
+      // cannot arrive while only microtasks run
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.microtask(() {});
+      }
+
+      await JsonProcessor().dispose();
+      await expectation;
+    });
+
+    test('dispose twice is a no-op', () async {
+      final starting = JsonProcessor().decodeTask(jsonString);
+      final expectation = expectLater(starting, throwsDisposed);
+      final first = JsonProcessor().dispose();
+      final second = JsonProcessor().dispose();
+      expect(identical(first, second), isTrue);
+      await Future.wait([first, second]);
+      await expectation;
+      await JsonProcessor().dispose();
+
+      final task = await JsonProcessor().decodeTask(jsonString);
+      expect(task.url, equals('https://example.com'));
+    });
+  });
+
   test('Benchmark: JsonProcessor vs Direct', () async {
     // 1. Create large task
     final headers = <String, String>{};
