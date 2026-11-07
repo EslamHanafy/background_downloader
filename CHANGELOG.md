@@ -1,6 +1,7 @@
 ## Unreleased
 
 * Add `FileDownloader.dispose()` to stop the background JSON isolate before a Flutter engine is destroyed (headless/background engines), so it no longer keeps the engine's isolate group alive
+* `FileDownloader.dispose()` drops tasks waiting to retry and stops connectivity monitoring
 
 ## 9.6.5
 

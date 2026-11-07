@@ -59,11 +59,15 @@ abstract base class NativeDownloader extends BaseDownloader {
   /// iOS does not store updates posted while no handler is set.
   @override
   Future<void> dispose() async {
+    // Stop connectivity monitoring first, so a network change while the
+    // queue drains cannot re-enqueue a held task
+    await super.dispose();
     await _backgroundChannelReady.future;
     _backgroundChannel.setMethodCallHandler(null);
     await _jobQueue.idle;
+    // Updates processed while draining may have held new tasks
+    tasksWaitingToRetry.clear();
     await JsonProcessor().dispose();
-    await super.dispose();
   }
 
   /// Handles the background message

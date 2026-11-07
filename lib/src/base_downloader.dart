@@ -1306,8 +1306,13 @@ abstract base class BaseDownloader {
 
   /// Releases resources that would otherwise outlive the Flutter engine
   ///
-  /// Called by [FileDownloader.dispose]. Subclasses that hold such resources
-  /// override this and call `super.dispose()`.
+  /// Tasks waiting to retry are dropped, connectivity monitoring stops, and
+  /// background resources are released. Called by [FileDownloader.dispose].
+  /// Subclasses that hold such resources override this and call
+  /// `super.dispose()`.
   @mustCallSuper
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    _connectivitySubscription?.cancel();
+    tasksWaitingToRetry.clear();
+  }
 }

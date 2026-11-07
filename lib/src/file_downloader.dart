@@ -1458,6 +1458,7 @@ interface class FileDownloader {
   /// background engine: the background JSON isolate would otherwise outlive
   /// the engine and keep its isolate group alive.
   ///
+  /// Held tasks waiting to retry are dropped and connectivity monitoring stops.
   /// After [dispose] this engine no longer receives task updates. On Android,
   /// final status updates are stored natively and delivered to the next engine
   /// that calls [start] or [resumeFromBackground]. On iOS, updates posted after
